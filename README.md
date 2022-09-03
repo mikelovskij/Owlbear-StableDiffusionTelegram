@@ -1,3 +1,10 @@
+Readme of StablediffusionTelegram below
+This repository is just a silly fork of StableDiffusionTelegram with some custom additions
+
+
+************************************************************************
+
+
 # StableDiffusionTelegram
 StableDiffusionTelegram is a telegram bot that allows to generate images using the [Stable Diffusion](https://github.com/CompVis/stable-diffusion) AI from a telegram bot, in a much more comfortable and simple way. This bot can generate images from a text input or from an image with caption. In addition, given any response from the bot, a new try or a variation of the attempt can be generated.
 
