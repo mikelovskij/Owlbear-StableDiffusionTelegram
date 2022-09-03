@@ -1,5 +1,7 @@
 Readme of StablediffusionTelegram below
-This repository is just a silly fork of StableDiffusionTelegram with some custom additions
+
+
+##This repository is just a silly fork of StableDiffusionTelegram with some custom additions
 
 
 ************************************************************************
