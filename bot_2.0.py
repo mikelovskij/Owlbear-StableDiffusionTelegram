@@ -13,7 +13,7 @@ from io import BytesIO
 import random
 
 
-from DoFaces.inference_codeformer_telegram import inference_gfpgan
+from inference_codeformer_telegram import generate_faces, inference_gfpgan
 
 import re
 
@@ -38,6 +38,9 @@ pipe = pipe.to("cpu")
 # load the img2img pipeline
 img2imgPipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4",revision="fp16", torch_dtype=torch.float16, use_auth_token=True)
 img2imgPipe = img2imgPipe.to("cpu")
+
+
+
 
 
 # disable safety checker if wanted
@@ -78,7 +81,7 @@ def generate_image(prompt, seed=None, height=image_h, width=image_w, num_inferen
         he=512
 
     if photo is not None:
-        pipe.to("cpu")
+        #pipe.to("cpu")
         img2imgPipe.to("cuda")
         init_image = Image.open(BytesIO(photo)).convert("RGB")
         init_image = init_image.resize((he, wi))
@@ -88,10 +91,10 @@ def generate_image(prompt, seed=None, height=image_h, width=image_w, num_inferen
                                     generator=generator,
                                     strength=strength,
                                     guidance_scale=guidance_scale,
-                                    num_inference_steps=num_inference_steps)["sample"][0]
+                                    num_inference_steps=num_inference_steps, torch_dtype=torch.float16, revision="fp16")["sample"][0]
     else:
         pipe.to("cuda")
-        img2imgPipe.to("cpu")
+        #img2imgPipe.to("cpu")
         with autocast("cuda"):
             image = pipe(prompt=[prompt],
                                     generator=generator,
@@ -99,33 +102,11 @@ def generate_image(prompt, seed=None, height=image_h, width=image_w, num_inferen
                                     height=he,
                                     width=wi,
                                     guidance_scale=guidance_scale,
-                                    num_inference_steps=num_inference_steps)["sample"][0]
+                                    num_inference_steps=num_inference_steps, torch_dtype=torch.float16, revision="fp16")["sample"][0]
     return image, seed
 
 
     
-def generate_faces(photo=None):
-        init_image = Image.open(BytesIO(photo)).convert("RGB")
-        #print(type(init_image))
-        return inference_gfpgan(photo=init_image)
-
-async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    progress_msg = await update.message.reply_text("Generating image...", reply_to_message_id=update.message.message_id)
-    im, seed = generate_image(prompt= update.message.text)
-    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-    await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{update.message.text}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
-
-
-async def generate_and_send_photo_from_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message.caption is None:
-        await update.message.reply_text("The photo must contain a text in the caption", reply_to_message_id=update.message.message_id)
-        return
-    progress_msg = await update.message.reply_text("Generating image...", reply_to_message_id=update.message.message_id)
-    photo_file = await update.message.photo[-1].get_file()
-    photo = await photo_file.download_as_bytearray()
-    im, seed = generate_image(prompt=update.message.caption, photo=photo)
-    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-    await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{update.message.caption}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
 
 
 async def generate_and_send_faces_from_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -135,6 +116,25 @@ async def generate_and_send_faces_from_photo(update: Update, context: ContextTyp
     im, seed = generate_faces(photo=photo)
     await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
     await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{update.message.caption}" (# of faces: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
+      
+async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    progress_msg = await update.message.reply_text("Generating image...", reply_to_message_id=update.message.message_id)
+    wanted_prompt=re.sub('!dream', '', update.message.text, flags=re.IGNORECASE)
+    im, seed = generate_image(prompt= wanted_prompt)
+    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
+    await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{wanted_prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
+
+async def generate_and_send_photo_from_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message.caption is None:
+        await update.message.reply_text("The photo must contain a text in the caption", reply_to_message_id=update.message.message_id)
+        return
+    progress_msg = await update.message.reply_text("Generating image...", reply_to_message_id=update.message.message_id)
+    photo_file = await update.message.photo[-1].get_file()
+    photo = await photo_file.download_as_bytearray()
+    wanted_prompt=re.sub('!dream', '', update.message.caption, flags=re.IGNORECASE)
+    im, seed = generate_image(prompt=wanted_prompt, photo=photo)
+    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
+    await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{wanted_prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -152,26 +152,35 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             prompt = replied_message.text
             im, seed = generate_image(prompt)
+            
+        await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
+        await context.bot.send_photo(replied_message.chat_id, image_to_bytes(im), caption=f'"{prompt}" (seed={seed})', reply_markup=get_try_again_markup(), reply_to_message_id=replied_message.message_id)
+    
     elif query.data == "VARIATIONS":
         photo_file = await query.message.photo[-1].get_file()
         photo = await photo_file.download_as_bytearray()
         prompt = replied_message.text if replied_message.text is not None else replied_message.caption
         im, seed = generate_image(prompt, photo=photo)
+        await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
+        await context.bot.send_photo(replied_message.chat_id, image_to_bytes(im), caption=f'"{prompt}" (seed={seed})', reply_markup=get_try_again_markup(), reply_to_message_id=replied_message.message_id) 
+        
     elif query.data == "FIXFACES":
         photo_file = await query.message.photo[-1].get_file()
         photo = await photo_file.download_as_bytearray()
         prompt = replied_message.text if replied_message.text is not None else replied_message.caption
         init_image = Image.open(BytesIO(photo)).convert("RGB")
         im, seed= inference_gfpgan(photo=init_image)
+        await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
+        await context.bot.send_photo(replied_message.chat_id, image_to_bytes(im), caption=f'"{prompt}" (# of processed faces{seed})', reply_markup=get_try_again_markup(), reply_to_message_id=replied_message.message_id)
         
-        
-    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-    await context.bot.send_photo(replied_message.chat_id, image_to_bytes(im), caption=f'"{prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=replied_message.message_id)
+
+
+
+
 
 
 # Here we have the actual app loop
 app = ApplicationBuilder().token(bot_token).build()
-
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & chatfilter & filters.Regex(re.compile(r'!dream', re.IGNORECASE)), generate_and_send_photo))
 app.add_handler(MessageHandler(filters.CaptionRegex(re.compile(r'!redream', re.IGNORECASE)), generate_and_send_photo_from_photo))
 app.add_handler(MessageHandler(filters.CaptionRegex(re.compile(r'!face', re.IGNORECASE)), generate_and_send_faces_from_photo))

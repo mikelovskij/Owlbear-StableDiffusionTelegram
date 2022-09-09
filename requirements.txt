@@ -5,3 +5,26 @@ ftfy>=6.1.1
 python-telegram-bot>=20.0a2
 python-dotenv>=0.20.0
 huggingface_hub
+
+
+# Faces:
+addict
+future
+lmdb
+numpy
+opencv-python
+Pillow
+pyyaml
+requests
+scikit-image
+scipy
+tb-nightly
+torch>=1.7.1
+torchvision
+tqdm
+yapf
+lpips
+gdown # supports downloading the large file from Google Drive
+# cmake
+# dlib
+# conda install -c conda-forge dlib
