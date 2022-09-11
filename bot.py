@@ -171,8 +171,6 @@ def main():
         owlbear = OrsoClass(config)
         namelist = json.loads(config['GLOBALS']['bot_names'])
         namestring = r"".join(s + "|" for s in namelist)
-        app.add_handler(MessageHandler((filters.Regex(re.compile(r'orso', re.IGNORECASE)) |
-                                        filters.Regex(re.compile(r'gufo', re.IGNORECASE))) & chatfilter, owlbear.gufa))
         app.add_handler(MessageHandler(filters.Regex(re.compile(namestring[:-1], re.IGNORECASE)) & chatfilter, owlbear.gufa))
         app.add_handler(MessageHandler(filters.Regex(re.compile(r'sei', re.IGNORECASE)) & chatfilter, owlbear.faccia))
         app.add_handler(MessageHandler((filters.Regex(re.compile(r'sticker', re.IGNORECASE)) |
