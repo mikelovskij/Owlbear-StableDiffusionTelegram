@@ -202,4 +202,5 @@ async def boh(a, b):
 
 
 # Launch everything
-main()
+if __name__ == "__main__":
+    main()
