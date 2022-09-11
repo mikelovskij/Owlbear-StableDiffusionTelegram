@@ -3,3 +3,4 @@ __pycache__/
 telebot/credentials.py
 .directory
 .idea
+config.ini
