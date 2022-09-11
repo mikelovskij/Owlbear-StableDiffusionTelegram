@@ -1,0 +1,30 @@
+[GLOBALS]
+bot_token = BOT TOKEN HERE
+safety_check = False
+allowed_chats = [ALLOWED CHAT IDS]
+bot_names = ["Orsogufo", "Orso", "Gufo", "Bot"]
+SD_checkpoint = CompVis/stable-diffusion-v1-4
+
+
+
+[TXT2IMG PARAMS]
+guidance_scale = 10
+denoising_strength = 0.75 # wait what should it be for txt2img?
+steps = 75
+image_h = 512
+image_w = 512
+
+[IMG2IMG PARAMS]
+guidance_scale = 10
+denoising_strength = 0.65
+steps = 50
+image_h = 512
+image_w = 512
+
+
+
+
+[ORSOBOT PARAMS]
+enable_owlbear = True
+owlbearify = 20  # percent chance to owlbearify the input
+sticker_list = ['']
