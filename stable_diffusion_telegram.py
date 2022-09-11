@@ -1,15 +1,34 @@
 import inspect
+import torch
+from torch import autocast
 from typing import List, Optional, Union
-
 import numpy as np
 import torch
-
+import os
 import PIL
+from PIL import Image
+from io import BytesIO
+
+
+from diffusers import StableDiffusionPipeline
 from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+
+#def setup_stablediffusion():
+
+# should load these from a cfg file (reload every time we have a new run also)
+NUM_INFERENCE_STEPS = int(os.getenv('NUM_INFERENCE_STEPS', '50'))
+STRENTH = float(os.getenv('STRENTH', '0.75'))
+GUIDANCE_SCALE = float(os.getenv('GUIDANCE_SCALE', '9'))
+safety_checker = False
+
+
+
+# disable safety checker if wanted
+def dummy_checker(images, **kwargs): return images, False
 
 def preprocess(image):
     w, h = image.size
@@ -20,8 +39,8 @@ def preprocess(image):
     image = torch.from_numpy(image)
     return 2.0 * image - 1.0
 
-
 class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
+
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -78,7 +97,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
         # encode the init image into latents and scale the latents
-        init_latents = self.vae.encode(init_image.to(self.device)).sample()
+        #init_latents = self.vae.encode(init_image.to(self.device)).sample()
+        init_latents = self.vae.encode(init_image.to(self.device)).latent_dist.sample()
         init_latents = 0.18215 * init_latents
 
         # prepare init_latents noise to latents
@@ -149,7 +169,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents)
+        image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
@@ -162,3 +182,67 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             image = self.numpy_to_pil(image)
 
         return {"sample": image, "nsfw_content_detected": has_nsfw_concept}
+
+def generate_image(prompt, seed=None, height=512, width=512, num_inference_steps=NUM_INFERENCE_STEPS, strength=STRENTH, guidance_scale=GUIDANCE_SCALE, photo=None):
+    seed = seed if seed is not None else torch.seed()
+    generator = torch.cuda.manual_seed_all(seed)
+
+    #if "portrait" in prompt:
+    #    he=768
+    #    wi=512
+    #elif "landscape" in prompt:
+    #    wi=768
+    #    he=512
+    #else:
+    #width=512
+    #height=512
+
+    if photo is not None:
+        #pipe.to("cpu")
+        img2imgPipe.to("cuda")
+        init_image = Image.open(BytesIO(photo)).convert("RGB")
+        init_image = init_image.resize((height, width))
+        init_image = preprocess(init_image)
+        with autocast("cuda"):
+            image = img2imgPipe(prompt=[prompt], init_image=init_image,
+                                    generator=generator,
+                                    strength=strength,
+                                    guidance_scale=guidance_scale,
+                                    num_inference_steps=num_inference_steps)["sample"][0]
+                                    #, revision="fp16", num_inference_steps=num_inference_steps, torch_dtype=torch.float16, revision="fp16")["sample"][0]        
+
+    else:
+        pipe.to("cuda")
+        #img2imgPipe.to("cpu")
+        with autocast("cuda"):
+            image = pipe(prompt=[prompt],
+                                    generator=generator,
+                                    strength=strength,
+                                    height=height,
+                                    width=width,
+                                    guidance_scale=guidance_scale,
+                                    num_inference_steps=num_inference_steps, torch_dtype=torch.float16, revision="fp16")["sample"][0]
+    return image, seed
+
+    
+    
+    
+    
+
+
+
+
+
+# load the text2img pipeline
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, use_auth_token=True)
+pipe = pipe.to("cpu")
+
+# load the img2img pipeline
+img2imgPipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4",revision="fp16", torch_dtype=torch.float16, use_auth_token=True)
+img2imgPipe = img2imgPipe.to("cpu")
+
+
+if not safety_checker:
+    pipe.safety_checker = dummy_checker
+    img2imgPipe.safety_checker = dummy_checker
+
