@@ -71,16 +71,18 @@ def realesrgan_henance(input=None, outscale=4,model_name="RealESRGAN_x4plus",alp
       
       
 
-    if len(img.shape) == 3 and img.shape[2] == 4:
-            img_mode = 'RGBA'
-    else:
-            img_mode = None
+    #if len(img.shape) == 3 and img.shape[2] == 4:
+    #        img_mode = 'RGBA'
+    #else:
+    #        img_mode = None
 
 
     try:
             if face_enhance:
+                print("Image enhancing and face fixing")
                 _, _, output = face_enhancer.enhance(img, has_aligned=False, only_center_face=False, paste_back=True)
             else:
+                print("Image enhancing")
                 output, _ = upsampler.enhance(img, outscale=outscale)
     except RuntimeError as error:
             print('Error', error)

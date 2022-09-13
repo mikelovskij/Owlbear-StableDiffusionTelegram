@@ -26,7 +26,6 @@ GUIDANCE_SCALE = float(os.getenv('GUIDANCE_SCALE', '9'))
 safety_checker = False
 
 
-
 # disable safety checker if wanted
 def dummy_checker(images, **kwargs): return images, False
 
