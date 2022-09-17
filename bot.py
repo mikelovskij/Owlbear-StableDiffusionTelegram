@@ -57,16 +57,8 @@ def generate_image(args, photo=None):
     prompt = " ".join(args.dream)
     prompt = 'Owlbear ' + prompt if random.randint(0, 100) < args.owlbearify else prompt
 
-    image_h = args.image_h
-    image_w = args.image_w
-
-    for i in range(args.portrait):
-        image_h *= 1.25
-        image_w /= 1.25
-
-    for i in range(args.landscape):
-        image_h /= 1.25
-        image_w *= 1.25
+    image_h = args.image_h * 1.25**args.portrait * 1.25**-args.landscape
+    image_w = args.image_w * 1.25**-args.portrait * 1.25**args.landscape
 
     # approximate h and w to the closes multiple of 64
     image_h = 64 * round(image_h / 64)
