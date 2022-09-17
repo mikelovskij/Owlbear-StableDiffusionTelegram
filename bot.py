@@ -150,7 +150,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             im, seed = generate_image(args=args, photo=photo)
         else:
             parser.set_defaults(**dict(config['GLOBALS']))
-            parser.set_defaults(**dict(config['IMG2IMG PARAMS']))
+            parser.set_defaults(**dict(config['TXT2IMG PARAMS']))
             msg = replied_message.text
             args = parser.parse_args(msg.split())
             im, seed = generate_image(args=args)
