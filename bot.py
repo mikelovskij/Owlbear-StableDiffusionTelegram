@@ -1,12 +1,6 @@
 #!/usr/bin/env python
 import argparse
-
-import torch
-from torch import autocast
-from diffusers import StableDiffusionPipeline
-from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
 from PIL import Image
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes, MessageHandler, filters, CommandHandler
 from telebot.orsobot import OrsoClass
@@ -18,6 +12,8 @@ import configparser
 import json
 import re
 import asyncio
+import base64
+import requests
 
 
 # INITIAL setup of config and logger
@@ -26,12 +22,30 @@ config = configparser.ConfigParser(inline_comment_prefixes='#')
 config.read(config_file)
 parser = init_parser()
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
 # disable safety checker if wanted
 def dummy_checker(images, **kwargs): return images, False
+
+def cast_dict(element: any) -> any:
+    #If you expect None to be passed:
+    if element is None: 
+        return None
+    if element == 'True':
+        return True
+    if element == 'False':
+        return False
+    if element == '[]':
+        return list()
+    if element == '{}':
+        return dict()
+    try:        
+        return float(element)
+    except ValueError:
+        return element
+
 
 
 # Image gen Funcions (TODO: move to another file?)
@@ -51,44 +65,38 @@ def get_try_again_markup():
 
 
 def generate_image(args, photo=None):
-    seed = args.seed if args.seed is not None else torch.seed()
     logger.debug(args)
-    generator = torch.cuda.manual_seed_all(seed)
-    prompt = " ".join(args.dream)
-    prompt = 'Owlbear ' + prompt if random.randint(0, 100) < args.owlbearify else prompt
-
-    image_h = args.image_h * 1.25**args.portrait * 1.25**-args.landscape
-    image_w = args.image_w * 1.25**-args.portrait * 1.25**args.landscape
 
     # approximate h and w to the closes multiple of 64
-    image_h = 64 * round(image_h / 64)
-    image_w = 64 * round(image_w / 64)
+    image_h = args.height * 1.25**args.portrait * 1.25**-args.landscape
+    image_w = args.width * 1.25**-args.portrait * 1.25**args.landscape
+    args.height = 64 * round(image_h / 64)
+    args.width = 64 * round(image_w / 64)
 
-    if photo is not None:
-        pipe.to("cpu")
-        img2imgPipe.to("cuda")
-        init_image = Image.open(BytesIO(photo)).convert("RGB")
-        init_image = init_image.resize((image_w, image_h))
-        init_image = preprocess(init_image)
-        with autocast("cuda"):
-            image = img2imgPipe(prompt=[prompt], init_image=init_image,
-                                generator=generator,
-                                strength=float(args.denoising_strength),
-                                guidance_scale=float(args.guidance_scale),
-                                num_inference_steps=args.steps)["sample"][0]
-    else:
-        pipe.to("cuda")
-        img2imgPipe.to("cpu")
-        with autocast("cuda"):
-            image = pipe(prompt=[prompt],
-                         height=image_h,
-                         width=image_w,
-                         generator=generator,
-                         strength=float(args.denoising_strength),
-                         guidance_scale=float(args.guidance_scale),
-                         num_inference_steps=int(args.steps))["sample"][0]
+    
+    payload_keys = ['enable_hr', 'denoising_strength', 'firstphase_width',
+                    'firstphase_height', 'hr_scale', 'hr_upscaler',
+                    'hr_second_pass_steps', 'hr_resize_x', 'hr_resize_y', 'prompt', 
+                    'seed', 'subseed', 'subseed_strength', 'seed_resize_from_h',
+                    'seed_resize_from_w', 'sampler_name', 'batch_size', 'n_iter',
+                    'steps', 'cfg_scale', 'width', 'height', 'restore_faces',
+                    'tiling', 'do_not_save_samples', 'do_not_save_grid',
+                    'negative_prompt', 'eta', 's_churn', 's_tmax', 's_tmin', 's_noise',
+                    'override_settings', 'override_settings_restore_afterwards',
+                    'sampler_index', 'send_images', 'save_images', 'alwayson_scripts']
+
+    payload = {key:cast_dict(vars(args)[key]) for key in payload_keys}
+
+    prompt = " ".join(args.dream)
+    payload['prompt'] = 'Owlbear ' + prompt if random.randint(0, 100) < args.owlbearify else prompt
+    logger.info(payload)
+
+    r = requests.post(url=f'{args.sd_address}/sdapi/v1/txt2img', json=payload).json()
+    logger.debug(r['info'])
+    seed = json.loads(r['info'])['seed']
+    i = r['images'][0] # might want to add the management of multiple images in a future but not now
+    image = Image.open(BytesIO(base64.b64decode(i.split(",", 1)[0])))
     return image, seed
-
 
 async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
@@ -96,7 +104,8 @@ async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_
         parser.set_defaults(**dict(config['GLOBALS']))
         parser.set_defaults(**dict(config['ORSOBOT PARAMS']))
         parser.set_defaults(**dict(config['TXT2IMG PARAMS']))
-        args = parser.parse_args(update.message.text.split())
+        img_msg = '-d' + update.message.text.split('-d')[-1] # take only the part of message after -d and readds -d 
+        args = parser.parse_args(img_msg.split())
         progress_msg = await update.message.reply_text("Generating image...",
                                                        reply_to_message_id=update.message.message_id)
 
@@ -108,27 +117,27 @@ async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text(str(exc) + '\n\n' + parser.format_help())
 
 
-async def generate_and_send_photo_from_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.message.caption is None:
-        await update.message.reply_text("The photo must contain a text in the caption", reply_to_message_id=update.message.message_id)
-        return
+# async def generate_and_send_photo_from_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+#     if update.message.caption is None:
+#         await update.message.reply_text("The photo must contain a text in the caption", reply_to_message_id=update.message.message_id)
+#         return
 
-    photo_file = await update.message.photo[-1].get_file()
-    photo = await photo_file.download_as_bytearray()
-    try:
-        progress_msg = await update.message.reply_text("Generating image...",
-                                                       reply_to_message_id=update.message.message_id)
-        parser.set_defaults(**dict(config['GLOBALS']))
-        parser.set_defaults(**dict(config['ORSOBOT PARAMS']))
-        parser.set_defaults(**dict(config['IMG2IMG PARAMS']))
-        args = parser.parse_args(update.message.caption.split())
-        im, seed = generate_image(args=args, photo=photo)
-        await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-        await context.bot.send_photo(update.message.chat_id, image_to_bytes(im),
-                                     caption=f'"{update.message.caption}" (Seed: {seed})',
-                                     reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
-    except (argparse.ArgumentError, argparse.ArgumentTypeError, ValueError) as exc:
-        await update.message.reply_text(str(exc) + '\n\n' + parser.format_help())
+#     photo_file = await update.message.photo[-1].get_file()
+#     photo = await photo_file.download_as_bytearray()
+#     try:
+#         progress_msg = await update.message.reply_text("Generating image...",
+#                                                        reply_to_message_id=update.message.message_id)
+#         parser.set_defaults(**dict(config['GLOBALS']))
+#         parser.set_defaults(**dict(config['ORSOBOT PARAMS']))
+#         parser.set_defaults(**dict(config['IMG2IMG PARAMS']))
+#         args = parser.parse_args(update.message.caption.split())
+#         im, seed = generate_image(args=args, photo=photo)
+#         await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
+#         await context.bot.send_photo(update.message.chat_id, image_to_bytes(im),
+#                                      caption=f'"{update.message.caption}" (Seed: {seed})',
+#                                      reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
+#     except (argparse.ArgumentError, argparse.ArgumentTypeError, ValueError) as exc:
+#         await update.message.reply_text(str(exc) + '\n\n' + parser.format_help())
 
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -140,55 +149,47 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if query.data == "TRYAGAIN":
         if replied_message.photo is not None and len(replied_message.photo) > 0 and replied_message.caption is not None:
-            photo_file = await replied_message.photo[-1].get_file()
-            photo = await photo_file.download_as_bytearray()
-            parser.set_defaults(**dict(config['GLOBALS']))
-            parser.set_defaults(**dict(config['ORSOBOT PARAMS']))
-            parser.set_defaults(**dict(config['IMG2IMG PARAMS']))
-            msg = replied_message.caption
-            args = parser.parse_args(msg.split())
-            im, seed = generate_image(args=args, photo=photo)
-        else:
-            parser.set_defaults(**dict(config['GLOBALS']))
-            parser.set_defaults(**dict(config['TXT2IMG PARAMS']))
-            msg = replied_message.text
-            args = parser.parse_args(msg.split())
-            im, seed = generate_image(args=args)
+            # photo_file = await replied_message.photo[-1].get_file()
+            # photo = await photo_file.download_as_bytearray()
+            # parser.set_defaults(**dict(config['GLOBALS']))
+            # parser.set_defaults(**dict(config['ORSOBOT PARAMS']))
+            # parser.set_defaults(**dict(config['IMG2IMG PARAMS']))
+            # msg = replied_message.caption
+            # args = parser.parse_args(msg.split())
+            # im, seed = generate_image(args=args, photo=photo)
+            await query.message.reply_text("Not reimplemented yet, regenerating image")
+        # else:
+        #     parser.set_defaults(**dict(config['GLOBALS']))
+        #     parser.set_defaults(**dict(config['TXT2IMG PARAMS']))
+        #     msg = replied_message.text
+        #     args = parser.parse_args(msg.split())
+        #     im, seed = generate_image(args=args)
     elif query.data == "VARIATIONS":
-        photo_file = await query.message.photo[-1].get_file()
-        photo = await photo_file.download_as_bytearray()
-        parser.set_defaults(**dict(config['GLOBALS']))
-        parser.set_defaults(**dict(config['ORSOBOT PARAMS']))
-        parser.set_defaults(**dict(config['IMG2IMG PARAMS']))
-        msg = replied_message.text if replied_message.text is not None else replied_message.caption
-        args = parser.parse_args(msg.split())
-        im, seed = generate_image(args=args, photo=photo)
+        # photo_file = await query.message.photo[-1].get_file()
+        # photo = await photo_file.download_as_bytearray()
+        # parser.set_defaults(**dict(config['GLOBALS']))
+        # parser.set_defaults(**dict(config['ORSOBOT PARAMS']))
+        # parser.set_defaults(**dict(config['IMG2IMG PARAMS']))
+        # msg = replied_message.text if replied_message.text is not None else replied_message.caption
+        # args = parser.parse_args(msg.split())
+        # im, seed = generate_image(args=args, photo=photo)
+        await query.message.reply_text("Not reimplemented yet, regenerating image")
+
+    parser.set_defaults(**dict(config['GLOBALS']))
+    default_payload = dict(config['TXT2IMG PARAMS'])
+    msg = replied_message.text
+    args = parser.parse_args(msg.split())
+    im, seed = generate_image(args=args)
     await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
     await context.bot.send_photo(replied_message.chat_id, image_to_bytes(im), caption=f'"{msg}" (Seed: {seed})',
                                  reply_markup=get_try_again_markup(), reply_to_message_id=replied_message.message_id)
-
-# LOAD THE PIPES
-# load the text2img pipeline
-revision = "fp16" if config.getboolean('GLOBALS', 'low_memory') else None
-torch_dtype = torch.float16 if config.getboolean('GLOBALS', 'low_memory') else None
-
-pipe = StableDiffusionPipeline.from_pretrained(config['GLOBALS']['SD_checkpoint'], revision=revision,
-                                               torch_dtype=torch_dtype, use_auth_token=True)
-pipe = pipe.to("cpu")
-
-# load the img2img pipeline
-img2imgPipe = StableDiffusionImg2ImgPipeline.from_pretrained(config['GLOBALS']['SD_checkpoint'], revision=revision,
-                                                             torch_dtype=torch_dtype, use_auth_token=True)
-img2imgPipe = img2imgPipe.to("cpu")
 
 
 # Here we have the actual app loop
 def main():
     global app
     config.read(config_file)
-    if not config.getboolean('GLOBALS', 'safety_check'): #TODO: the filter cannot be reenabled once disabled this way
-        pipe.safety_checker = dummy_checker
-        img2imgPipe.safety_checker = dummy_checker
+
     # set up the chat filters
     try:
         chat_ids = json.loads(config['GLOBALS']['allowed_chats'])
@@ -198,8 +199,8 @@ def main():
         chatfilter = filters.TEXT
     try:
         app = ApplicationBuilder().token(config['GLOBALS']['bot_token']).build()
-    except:
-        pass
+    except Exception as e:
+        print(e)
     print('blub')
     try:
         for handler in app.handlers[0]:
@@ -209,8 +210,8 @@ def main():
     app.add_handler(CommandHandler("reload", boh, filters=chatfilter))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & chatfilter
                                    & filters.Regex(re.compile(r'--dream|-d', re.IGNORECASE)), generate_and_send_photo))
-    app.add_handler(MessageHandler(filters.PHOTO & chatfilter & filters.Regex(re.compile(r'--dream|-d', re.IGNORECASE)),
-                                   generate_and_send_photo_from_photo))
+    #app.add_handler(MessageHandler(filters.PHOTO & chatfilter & filters.Regex(re.compile(r'--dream|-d', re.IGNORECASE)),
+    #                               generate_and_send_photo_from_photo))
     if config.getboolean('ORSOBOT PARAMS', 'enable_owlbear', fallback=False):
         owlbear = OrsoClass(config)
         namelist = json.loads(config['GLOBALS']['bot_names'])

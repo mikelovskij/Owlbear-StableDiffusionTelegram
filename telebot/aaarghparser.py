@@ -23,10 +23,10 @@ def init_parser():
 
     parser.add_argument('-l', '--load', dest='load')
 
-    parser.add_argument('-H', '--height', type=int, dest='image_h', default=512)
-    parser.add_argument('-W', '--width', type=int, dest='image_w', default=512)
-    parser.add_argument('-s', '--steps', type=int, dest='steps', default=50, help='Number of diffusion steps')
-    parser.add_argument('-c', '--cfg_scale', type=float, dest='guidance_scale', default=10,
+    parser.add_argument('-H', '--height', type=int, dest='width', default=640)
+    parser.add_argument('-W', '--width', type=int, dest='height', default=640)
+    parser.add_argument('-s', '--steps', type=int, dest='steps', default=30, help='Number of diffusion steps')
+    parser.add_argument('-c', '--cfg_scale', type=float, dest='cfg_scale', default=6,
                         help='How hard it tries to follow the prompt, kind of, from 1 to 20')
     parser.add_argument('-DS', '--Denoising_Strength', type=float, dest='denoising_strength', default=0.6,
                         help='Strength of denoising in IMG2IMG')

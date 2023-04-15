@@ -1,18 +1,52 @@
 [GLOBALS]
-bot_token = BOT TOKEN HERE
+bot_token = TELEGRAM BOT TOKEN HERE
 safety_check = False
-allowed_chats = [ALLOWED CHAT IDS]
+allowed_chats = [-1001736319661, -1001725710831]
 bot_names = ["Orsogufo", "Orso", "Gufo", "Bot"]
-SD_checkpoint = CompVis/stable-diffusion-v1-4
+sd_address = http://127.0.0.1:7860
 
 
 
 [TXT2IMG PARAMS]
-guidance_scale = 10
-denoising_strength = 0.75 # wait what should it be for txt2img?
-steps = 75
-image_h = 512
-image_w = 512
+enable_hr = True
+denoising_strength = 0.65
+firstphase_width = 0
+firstphase_height = 0
+hr_scale = 2
+hr_upscaler = SwinIR_4x
+hr_second_pass_steps = 0
+hr_resize_x = 0
+hr_resize_y = 0
+prompt = msg
+seed = -1
+subseed = -1
+subseed_strength = 0
+seed_resize_from_h = -1
+seed_resize_from_w = -1
+sampler_name = DPM++ 2M Karras
+batch_size = 1
+n_iter = 1
+steps = 30
+cfg_scale = 6
+width = 640
+height = 640
+restore_faces = False
+tiling = False
+do_not_save_samples = False
+do_not_save_grid = False
+negative_prompt = (bad art low detail pencil drawing =1.4) (plain background grainy low quality mutated hands and fingers =1.4) (watermark thin lines =1.2) (deformed signature =1.2) (blurry ugly bad anatomy extra limbs undersaturated low resolution) disfigured deformations out of frame amputee bad proportions extra limb missing limbs distortion floating limbs out of frame poorly drawn face poorly drawn hands text malformed missing fingers cropped
+eta = 0
+s_churn = 0
+s_tmax = 0
+s_tmin = 0
+s_noise = 1
+override_settings = {}
+override_settings_restore_afterwards = True
+sampler_index = Euler
+send_images = True
+save_images = False
+alwayson_scripts = {}
+
 
 [IMG2IMG PARAMS]
 guidance_scale = 10
@@ -27,4 +61,4 @@ image_w = 512
 [ORSOBOT PARAMS]
 enable_owlbear = True
 owlbearify = 20  # percent chance to owlbearify the input
-sticker_list = ['']
+sticker_list = []
